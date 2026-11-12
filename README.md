@@ -63,3 +63,4 @@ Base package: `com.sanitation.management`
 | `admin` | Admin-only operations |
 
 Empty packages contain `.gitkeep` so Git preserves them; delete it when you add real files.
+# sanitation-management-system
