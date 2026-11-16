@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: sanitation-management-system
+
+threads:
+  virtual:
+    enabled: true
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/sanitation_management_system?serverTimezone=UTC
+    username: root
+    password: "michaelL0@"
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+    # HikariCP connection pool
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+      auto_quote_keyword: true
+
+    open-in-view: false
+    show-sql: true
+
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.testing.features.service: DEBUG
+    org.hibernate.SQL: DEBUG
+
+otp:
+  enc-key: "9XLkzKGTD7zuk1W9fMlPgtZn1lhuaMeGCbknI2T+H/M="    # must decode to exactly 32 bytes
+  hmac-key: "qQ0VDw0OTpq8eVMq8Cs5wC0lfrinl0z8I0gUGDZ1dfQ="  # must decode to at least 32 bytes
+
+app:
+  jwt:
+    secret: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+    issuer: "sanitation-management-system"
+    access-token-ttl: 15m
+
+
+brevo:
+  api-key: "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"
+  email:
+    sender-email: "chrisbackenddevelopments@gmail.com"
+    sender-name: "Backend-dev"
+sms:
+  sender: "Sanitation"
+  default-country-code: "233"
