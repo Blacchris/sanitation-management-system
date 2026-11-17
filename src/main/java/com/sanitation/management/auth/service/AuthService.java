@@ -1,14 +1,10 @@
 package com.sanitation.management.auth.service;
 
-import com.sanitation.management.auth.dto.AuthResponse;
-import com.sanitation.management.auth.dto.CustomerRegistrationRequest;
-import com.sanitation.management.auth.dto.LoginRequest;
-import com.sanitation.management.auth.dto.OrganizationRegistrationRequest;
-import com.sanitation.management.auth.dto.RegistrationResponse;
-import com.sanitation.management.auth.dto.VerifyOtpRequest;
+import com.sanitation.management.auth.dto.*;
 import com.sanitation.management.auth.entity.DeliveryChannel;
 import com.sanitation.management.auth.entity.OtpEmailOutbox;
 import com.sanitation.management.auth.entity.PendingRegistration;
+import com.sanitation.management.auth.entity.RegistrationType;
 import com.sanitation.management.auth.repository.OtpEmailOutboxRepository;
 import com.sanitation.management.auth.repository.PendingRegistrationRepository;
 import com.sanitation.management.common.exception.*;
@@ -94,7 +90,12 @@ public class AuthService {
         assertResendAllowed(pending);
 
 
-        fillAccount(pending, request.fullName(), email, phone, request.password(), Role.CUSTOMER, channel);
+        pending.setRegistrationType(RegistrationType.CUSTOMER);
+        pending.setFullName(request.fullName().trim());
+        pending.setEmail(email);
+        pending.setPhone(phone);
+        pending.setPasswordHash(passwordEncoder.encode(request.password()));
+        pending.setChannel(channel);
         clearOrganizationDetails(pending);
 
         return issueOtp(pending, channel);
@@ -102,28 +103,42 @@ public class AuthService {
 
     @Transactional
     public RegistrationResponse registerOrganization(OrganizationRegistrationRequest request) {
-        String email = normalizeEmail(request.email());
-        String phone = request.phone().trim();
+        String email = normalizeEmail(request.contactEmail());
+        String phone = request.contactPhone().trim();
         String registrationNumber = blankToNull(request.registrationNumber());
         DeliveryChannel channel = resolveChannel(request.otpChannel());
 
-        assertAccountAvailable(email, phone);
-        assertRegistrationNumberAvailable(registrationNumber);
+        assertOrganizationAvailable(email, phone, registrationNumber);
 
         PendingRegistration pending = findOrCreatePending(email);
         assertResendAllowed(pending);
 
-        fillAccount(pending, request.fullName(), email, phone, request.password(), Role.ORGANIZATION, channel);
+        // Contact email/phone double as the OTP destination. No user account is involved.
+        pending.setRegistrationType(RegistrationType.ORGANIZATION);
+        pending.setEmail(email);
+        pending.setPhone(phone);
+        pending.setChannel(channel);
+        pending.setFullName(null);
+        pending.setPasswordHash(null);
         pending.setOrganizationName(request.organizationName().trim());
         pending.setRegistrationNumber(registrationNumber);
         pending.setDescription(blankToNull(request.description()));
         pending.setServicesDescription(request.servicesDescription().trim());
-        String contactEmail = blankToNull(request.contactEmail());
-        pending.setContactEmail(contactEmail == null ? null : normalizeEmail(contactEmail));
-        pending.setContactPhone(request.contactPhone().trim());
         pending.setBusinessAddress(request.businessAddress().trim());
 
         return issueOtp(pending, channel);
+    }
+
+    @Transactional
+    public RegistrationResponse resendOtp(ResendOtpRequest request) {
+        String email = normalizeEmail(request.email());
+
+        PendingRegistration pending = pendingRegistrationRepository.findByEmailForUpdate(email)
+                .orElseThrow(InvalidOtpException::new);
+
+        assertResendAllowed(pending);
+
+        return issueOtp(pending, pending.getChannel());
     }
 
     private RegistrationResponse issueOtp(PendingRegistration pendingRegistration, DeliveryChannel channel) {
@@ -151,7 +166,7 @@ public class AuthService {
             throw new IllegalStateException("Failed to encrypt OTP", e);
         }
 
-        //Explain why the OTP
+        //Explain why the OTPEmailOutbox row identity uses the PendingRegistration id
         OtpEmailOutbox outbox = otpEmailOutboxRepository.findById(registrationId)
                 .orElseGet(OtpEmailOutbox::new);
 
@@ -174,60 +189,78 @@ public class AuthService {
 
 
     @Transactional(noRollbackFor = {InvalidOtpException.class, TooManyAttemptsException.class})
-    public AuthResponse verifyRegistration(VerifyOtpRequest request) {
+    public AuthResponse verifyCustomerRegistration(VerifyOtpRequest request) {
         String email = normalizeEmail(request.email());
-
-        PendingRegistration pending = pendingRegistrationRepository.findByEmailForUpdate(email)
-                .orElseThrow(InvalidOtpException::new);
-
-        if (pending.getOtpAttempts() >= otpService.maxAttempts()) {
-            throw new TooManyAttemptsException();
-        }
-        if (Instant.now().isAfter(pending.getOtpExpiresAt())) {
-            throw new InvalidOtpException();
-        }
-        if (!otpService.matches(email, request.otp(), pending.getOtpHash())) {
-            int attempts = pending.getOtpAttempts() + 1;
-            pending.setOtpAttempts(attempts);
-            pendingRegistrationRepository.saveAndFlush(pending);
-            throw attempts >= otpService.maxAttempts() ? new TooManyAttemptsException() : new InvalidOtpException();
-        }
+        PendingRegistration pending = checkOtp(email, request.otp(), RegistrationType.CUSTOMER);
 
         assertAccountAvailable(email, pending.getPhone());
-        if (pending.getRole() == Role.ORGANIZATION) {
-            assertRegistrationNumberAvailable(pending.getRegistrationNumber());
-        }
 
         User user = new User();
         user.setFullName(pending.getFullName());
         user.setEmail(pending.getEmail());
         user.setPhone(pending.getPhone());
         user.setPasswordHash(pending.getPasswordHash());
-        user.setRole(pending.getRole());
+        user.setRole(Role.CUSTOMER);
         user.setAccountStatus(AccountStatus.ACTIVE);
         userRepository.saveAndFlush(user);
 
-        Organization organization = null;
-        if (pending.getRole() == Role.ORGANIZATION) {
-            organization = new Organization();
-            organization.setUser(user);
-            organization.setOrganizationName(pending.getOrganizationName());
-            organization.setRegistrationNumber(pending.getRegistrationNumber());
-            organization.setDescription(pending.getDescription());
-            organization.setServicesDescription(pending.getServicesDescription());
-            organization.setContactEmail(pending.getContactEmail());
-            organization.setContactPhone(pending.getContactPhone());
-            organization.setBusinessAddress(pending.getBusinessAddress());
-            organization.setVerificationStatus(VerificationStatus.PENDING); // OTP != admin verification
-            organization.setAcceptingRequests(Boolean.FALSE);
-            organizationRepository.saveAndFlush(organization);
-        }
+        discardPending(pending);
 
+        return AuthResponse.of(jwtService.generateAccessToken(user), user);
+    }
+
+    /** Organizations have no login, so verification creates the Organization only and issues no token. */
+    @Transactional(noRollbackFor = {InvalidOtpException.class, TooManyAttemptsException.class})
+    public OrganizationSummary verifyOrganizationRegistration(VerifyOtpRequest request) {
+        String email = normalizeEmail(request.email());
+        PendingRegistration pending = checkOtp(email, request.otp(), RegistrationType.ORGANIZATION);
+
+        assertOrganizationAvailable(pending.getEmail(), pending.getPhone(), pending.getRegistrationNumber());
+
+        Organization organization = new Organization();
+        organization.setOrganizationName(pending.getOrganizationName());
+        organization.setRegistrationNumber(pending.getRegistrationNumber());
+        organization.setDescription(pending.getDescription());
+        organization.setServicesDescription(pending.getServicesDescription());
+        organization.setContactEmail(pending.getEmail());
+        organization.setContactPhone(pending.getPhone());
+        organization.setBusinessAddress(pending.getBusinessAddress());
+        organization.setVerificationStatus(VerificationStatus.PENDING); // OTP != admin verification
+        organization.setAcceptingRequests(Boolean.FALSE);
+        organizationRepository.saveAndFlush(organization);
+
+        discardPending(pending);
+
+        return OrganizationSummary.from(organization);
+    }
+
+    /** Shared OTP check. A pending row of the other type is treated as "no such registration". */
+    private PendingRegistration checkOtp(String email, String otp, RegistrationType expectedType) {
+        PendingRegistration pending = pendingRegistrationRepository.findByEmailForUpdate(email)
+                .orElseThrow(InvalidOtpException::new);
+
+        if (pending.getRegistrationType() != expectedType) {
+            throw new InvalidOtpException();
+        }
+        if (pending.getOtpAttempts() >= otpService.maxAttempts()) {
+            throw new TooManyAttemptsException();
+        }
+        if (Instant.now().isAfter(pending.getOtpExpiresAt())) {
+            throw new InvalidOtpException();
+        }
+        if (!otpService.matches(email, otp, pending.getOtpHash())) {
+            int attempts = pending.getOtpAttempts() + 1;
+            pending.setOtpAttempts(attempts);
+            pendingRegistrationRepository.saveAndFlush(pending);
+            throw attempts >= otpService.maxAttempts() ? new TooManyAttemptsException() : new InvalidOtpException();
+        }
+        return pending;
+    }
+
+    private void discardPending(PendingRegistration pending) {
         // Child (outbox) first, then parent (pending): the outbox PK is a foreign key to the pending row.
         otpEmailOutboxRepository.deleteById(pending.getId());
         pendingRegistrationRepository.delete(pending);
-
-        return AuthResponse.of(jwtService.generateAccessToken(user), user, organization);
     }
 
 
@@ -272,11 +305,7 @@ public class AuthService {
         }
 
 
-        Organization organization = user.getRole() == Role.ORGANIZATION
-                ? organizationRepository.findByUserId(user.getId()).orElse(null)
-                : null;
-
-        return AuthResponse.of(jwtService.generateAccessToken(user), user, organization);
+        return AuthResponse.of(jwtService.generateAccessToken(user), user);
     }
 
     private boolean passwordMatches(String rawPassword, String storedHash) {
@@ -309,23 +338,11 @@ public class AuthService {
         return requested == null ? DeliveryChannel.EMAIL : requested;
     }
 
-    private void fillAccount(PendingRegistration pending, String fullName, String email, String phone,
-                             String rawPassword, Role role, DeliveryChannel channel) {
-        pending.setFullName(fullName.trim());
-        pending.setEmail(email);
-        pending.setPhone(phone);
-        pending.setPasswordHash(passwordEncoder.encode(rawPassword));
-        pending.setRole(role);
-        pending.setChannel(channel);
-    }
-
     private void clearOrganizationDetails(PendingRegistration pending) {
         pending.setOrganizationName(null);
         pending.setRegistrationNumber(null);
         pending.setDescription(null);
         pending.setServicesDescription(null);
-        pending.setContactEmail(null);
-        pending.setContactPhone(null);
         pending.setBusinessAddress(null);
     }
 
@@ -338,7 +355,13 @@ public class AuthService {
         }
     }
 
-    private void assertRegistrationNumberAvailable(String registrationNumber) {
+    private void assertOrganizationAvailable(String contactEmail, String contactPhone, String registrationNumber) {
+        if (organizationRepository.existsByContactEmail(contactEmail)) {
+            throw new DuplicateResourceException("Organization email is already registered");
+        }
+        if (organizationRepository.existsByContactPhone(contactPhone)) {
+            throw new DuplicateResourceException("Organization phone number is already registered");
+        }
         if (registrationNumber != null && organizationRepository.existsByRegistrationNumber(registrationNumber)) {
             throw new DuplicateResourceException("Registration number is already registered");
         }

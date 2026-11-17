@@ -1,24 +1,17 @@
 package com.sanitation.management.auth.controller;
 
-import com.sanitation.management.auth.dto.AuthResponse;
-import com.sanitation.management.auth.dto.CustomerRegistrationRequest;
-import com.sanitation.management.auth.dto.LoginRequest;
-import com.sanitation.management.auth.dto.OrganizationRegistrationRequest;
-import com.sanitation.management.auth.dto.RegistrationResponse;
-import com.sanitation.management.auth.dto.VerifyOtpRequest;
+import com.sanitation.management.auth.dto.*;
 import com.sanitation.management.auth.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
+@CrossOrigin("*")
 public class AuthController {
 
     private final AuthService authService;
@@ -36,9 +29,21 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(authService.registerOrganization(request));
     }
 
+    @PostMapping("/register/resend-otp")
+    public ResponseEntity<RegistrationResponse> resendOtp(@Valid @RequestBody ResendOtpRequest request) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(authService.resendOtp(request));
+    }
+
+    // Customer: creates the user and returns a token.
     @PostMapping("/verify-otp")
     public ResponseEntity<AuthResponse> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(authService.verifyRegistration(request));
+        return ResponseEntity.status(HttpStatus.CREATED).body(authService.verifyCustomerRegistration(request));
+    }
+
+    // Organization: creates the organization only (no account, no token). Email = the contact email used to register.
+    @PostMapping("/verify-otp/organization")
+    public ResponseEntity<OrganizationSummary> verifyOrganizationOtp(@Valid @RequestBody VerifyOtpRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(authService.verifyOrganizationRegistration(request));
     }
 
     @PostMapping("/login")

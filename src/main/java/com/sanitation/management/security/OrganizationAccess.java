@@ -3,16 +3,13 @@ package com.sanitation.management.security;
 import com.sanitation.management.organization.enums.VerificationStatus;
 import com.sanitation.management.organization.repository.OrganizationRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 
 /**
- * Verification state is read from the database on every check, never from the token:
- * a JWT is only proof of identity at issue time, and an organization's status can change afterwards.
+ * Organizations are standalone (no user account), so access is checked by organization id.
+ * Status is read from the database on every check, since an organization's status can change at any time.
  *
- * Usage on any organization-only operation:
- * {@code @PreAuthorize("hasRole('ORGANIZATION') and @organizationAccess.isVerified(authentication)")}
+ * Usage: {@code @PreAuthorize("@organizationAccess.isVerified(#organizationId)")}
  */
 @Component("organizationAccess")
 @RequiredArgsConstructor
@@ -20,15 +17,8 @@ public class OrganizationAccess {
 
     private final OrganizationRepository organizationRepository;
 
-    public boolean isVerified(Authentication authentication) {
-        if (!(authentication instanceof JwtAuthenticationToken jwtAuth)) {
-            return false;
-        }
-        try {
-            Long userId = Long.valueOf(jwtAuth.getToken().getSubject());
-            return organizationRepository.existsByUserIdAndVerificationStatus(userId, VerificationStatus.VERIFIED);
-        } catch (NumberFormatException ex) {
-            return false;
-        }
+    public boolean isVerified(Long organizationId) {
+        return organizationId != null
+                && organizationRepository.existsByIdAndVerificationStatus(organizationId, VerificationStatus.VERIFIED);
     }
 }

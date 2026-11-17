@@ -41,10 +41,8 @@ public class OtpCipher {
         Arrays.fill(raw, (byte) 0);
     }
 
-    // Encrypt the OTP and return the nonce and ciphertext separately.
     public EncryptedOtp encrypt(String plaintext) throws GeneralSecurityException {
 
-        // A fresh random nonce for every encryption: never reuse a nonce with the same key.
         byte[] nonce = new byte[NONCE_BYTES];
         random.nextBytes(nonce);
 
@@ -56,7 +54,6 @@ public class OtpCipher {
                 new GCMParameterSpec(TAG_BITS, nonce)
         );
 
-        // The returned ciphertext includes the GCM authentication tag.
         byte[] ciphertext = cipher.doFinal(
                 plaintext.getBytes(StandardCharsets.UTF_8)
         );
@@ -64,7 +61,6 @@ public class OtpCipher {
         return new EncryptedOtp(ciphertext, nonce);
     }
 
-    // Decrypt and authenticate the OTP. Throws if the ciphertext or nonce was altered.
     public String decrypt(
             byte[] ciphertext,
             byte[] nonce) throws GeneralSecurityException {
@@ -94,7 +90,6 @@ public class OtpCipher {
         return new String(plaintext, StandardCharsets.UTF_8);
     }
 
-    // Holds the two values that the outbox entity stores separately.
     public record EncryptedOtp(
             byte[] ciphertext,
             byte[] nonce

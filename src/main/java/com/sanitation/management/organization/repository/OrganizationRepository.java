@@ -5,16 +5,14 @@ import com.sanitation.management.organization.enums.VerificationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import java.util.Optional;
-
 @Repository
 public interface OrganizationRepository extends JpaRepository<Organization, Long> {
 
-    Optional<Organization> findByUserId(Long userId);
-
-    boolean existsByUserId(Long userId);
-
-    boolean existsByUserIdAndVerificationStatus(Long userId, VerificationStatus status);
+    boolean existsByIdAndVerificationStatus(Long id, VerificationStatus status);
 
     boolean existsByRegistrationNumber(String registrationNumber);
+
+    boolean existsByContactEmail(String contactEmail);
+
+    boolean existsByContactPhone(String contactPhone);
 }

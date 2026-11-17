@@ -64,6 +64,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 .body(ApiError.of(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI(), Map.of()));
     }
 
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ApiError> handleInvalidCredential(InvalidCredentialsException ex, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiError.of(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI(), Map.of()));
+    }
+
     @ExceptionHandler(AccountLockedException.class)
     public ResponseEntity<ApiError> handleAccountLocked(AccountLockedException ex, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.LOCKED)

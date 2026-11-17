@@ -57,12 +57,14 @@ public class OtpEmailOutboxWorker {
     private void process(OtpEmailOutbox outbox) {
         Long id = outbox.getPendingRegistrationId();
         try {
+            // 0. Do not email a code that can no longer be used.
             if (outbox.getPendingRegistration().getOtpExpiresAt().isBefore(Instant.now())) {
                 otpEmailOutboxRepo.markFailed(id, outbox.getDeliveryAttempts(), "OTP expired before delivery");
                 log.warn("OTP expired before delivery for registration ID {}", id);
                 return;
             }
 
+            // 1. Decrypt using the stored nonce and the same AAD.
             String otpText;
             try {
                 otpText = otpCipher.decrypt(
@@ -75,6 +77,7 @@ public class OtpEmailOutboxWorker {
                 return;
             }
 
+            // 2. Send through Brevo on the channel the user picked.
             try {
                 switch (outbox.getChannel()) {
                     case EMAIL -> brevo.sendEmail(outbox.getRecipient(), SUBJECT, buildBody(otpText));
@@ -85,6 +88,7 @@ public class OtpEmailOutboxWorker {
                 return;
             }
 
+            // 3. Record successful delivery submission and wipe the encrypted OTP.
             otpEmailOutboxRepo.markSent(id, Instant.now());
             log.info("OTP email processed for outbox registration ID {}", id);
 

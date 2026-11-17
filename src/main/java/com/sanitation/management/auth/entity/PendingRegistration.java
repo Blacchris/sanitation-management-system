@@ -1,6 +1,5 @@
 package com.sanitation.management.auth.entity;
 
-import com.sanitation.management.user.enums.Role;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AccessLevel;
@@ -27,21 +26,24 @@ public class PendingRegistration {
     private Long id;
 
 
+    // Customer: the user's email/phone. Organization: the organization's contact email/phone.
     @Column(name = "email", nullable = false, length = 254)
     private String email;
 
     @Column(name = "phone", nullable = false, length = 25)
     private String phone;
 
-    @Column(name = "full_name", nullable = false, length = 120)
+    // Customer only (null for organizations)
+    @Column(name = "full_name", length = 120)
     private String fullName;
 
-    @Column(name = "password_hash", nullable = false)
+    // Customer only (null for organizations)
+    @Column(name = "password_hash")
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "role", nullable = false, length = 20)
-    private Role role;
+    @Column(name = "registration_type", nullable = false, length = 20)
+    private RegistrationType registrationType;
 
     @NotNull
     @Enumerated(EnumType.STRING)
@@ -59,12 +61,6 @@ public class PendingRegistration {
 
     @Column(name = "services_description", columnDefinition = "TEXT")
     private String servicesDescription;
-
-    @Column(name = "contact_email", length = 254)
-    private String contactEmail;
-
-    @Column(name = "contact_phone", length = 25)
-    private String contactPhone;
 
     @Column(name = "business_address", length = 500)
     private String businessAddress;

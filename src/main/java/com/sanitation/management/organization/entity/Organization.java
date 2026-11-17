@@ -15,7 +15,8 @@ import java.time.LocalDateTime;
 @Table(
         name = "organizations",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_organizations_user_id", columnNames = "user_id"),
+                @UniqueConstraint(name = "uk_organizations_contact_email", columnNames = "contact_email"),
+                @UniqueConstraint(name = "uk_organizations_contact_phone", columnNames = "contact_phone"),
                 @UniqueConstraint(name = "uk_organizations_registration_number", columnNames = "registration_number")
         }
 )
@@ -31,12 +32,6 @@ public class Organization {
     @ToString.Include
     private Long id;
 
-    // Owning account. Unique FK => at most one organization per user.
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false,
-            foreignKey = @ForeignKey(name = "fk_organizations_user"))
-    private User user;
-
     @Column(name = "organization_name", nullable = false, length = 150)
     @ToString.Include
     private String organizationName;
@@ -50,7 +45,8 @@ public class Organization {
     @Column(name = "services_description", nullable = false, columnDefinition = "TEXT")
     private String servicesDescription;
 
-    @Column(name = "contact_email", length = 254)
+    // Also the OTP destination at registration, so it is required.
+    @Column(name = "contact_email", nullable = false, length = 254)
     private String contactEmail;
 
     @Column(name = "contact_phone", nullable = false, length = 25)
@@ -73,7 +69,8 @@ public class Organization {
     @Column(name = "verified_at")
     private LocalDateTime verifiedAt;
 
-    // Many organizations can be verified by the same admin => ManyToOne, not OneToOne.
+    // Admin (a User) who verified this organization. Unidirectional audit link; unrelated to registration.
+    // Many organizations can be verified by the same admin => ManyToOne.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "verified_by",
             foreignKey = @ForeignKey(name = "fk_organizations_verified_by"))
